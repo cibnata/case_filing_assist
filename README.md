@@ -93,3 +93,28 @@ npm run dev
 - **OCR 完全本地執行** — 截圖影像不會傳送到任何外部伺服器
 - **IndexedDB 本地儲存** — 案件資料存在員警自己的瀏覽器中
 - **鏈上查詢走 Serverless** — API Key 安全存放在 Vercel 環境變數
+
+
+## Frontend API environment variables
+
+Create a `.env` file in project root if frontend cannot reach OCR/LLM services:
+
+```
+VITE_OCR_API_BASE=http://localhost:8000
+VITE_LLM_API_BASE=http://localhost:8001
+```
+
+For `backend/ocr_server/suryaocr_Server.py`, optional PDF dependency path:
+
+```
+POPPLER_PATH=/usr/bin
+```
+
+
+### OCR `Failed to fetch` quick fix
+
+- Dev mode now supports proxy paths by default:
+  - OCR: `/ocr-api` -> `http://localhost:8000`
+  - LLM: `/llm-api` -> `http://localhost:8001`
+- Frontend will try multiple endpoints in order: env var -> proxy path -> localhost fallback.
+

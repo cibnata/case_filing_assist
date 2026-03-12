@@ -10,6 +10,16 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      '/ocr-api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ocr-api/, ''),
+      },
+      '/llm-api': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/llm-api/, ''),
+      },
     },
   },
   // pdfjs-dist uses node APIs that need polyfilling
