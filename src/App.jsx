@@ -5,10 +5,16 @@ const MONO = `"Source Code Pro","JetBrains Mono","SF Mono",Consolas,monospace`;
 const SANS = `"Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,sans-serif`;
 
 const FIELD_LABELS = {
+  person_name: { label: "人名", icon: "🧑", color: "#2563EB" },
+  account: { label: "帳號", icon: "👤", color: "#0EA5E9" },
+  nickname: { label: "暱稱", icon: "🏷️", color: "#6366F1" },
+  id_number: { label: "身分ID", icon: "🪪", color: "#1D4ED8" },
   wallet_address: { label: "錢包地址", icon: "🔗", color: "#A78BFA" },
   tx_hash: { label: "交易雜湊", icon: "🔖", color: "#60A5FA" },
   bank_account: { label: "銀行帳號", icon: "🏦", color: "#34D399" },
   url: { label: "網址", icon: "🌐", color: "#F472B6" },
+  license_plate: { label: "車號", icon: "🚗", color: "#0284C7" },
+  location: { label: "地點", icon: "📍", color: "#0369A1" },
   phone_number: { label: "電話", icon: "📞", color: "#FBBF24" },
   datetime: { label: "日期時間", icon: "🕐", color: "#38BDF8" },
   amount: { label: "金額", icon: "💰", color: "#FB923C" },
@@ -96,11 +102,28 @@ const callAPI = async (messages, useSearch = false) => {
 
 /* ── Styles ── */
 const C = {
-  bg: "#060A12", bg1: "#0B1120", bg2: "#111827", bg3: "#1E293B",
-  border: "#1E293B", borderLight: "#2D3B4F",
-  text: "#CBD5E1", textLight: "#94A3B8", textDim: "#475569", textBright: "#F1F5F9",
-  accent: "#3B82F6", accentDark: "#1D4ED8",
+  bg: "#EAF4FF", bg1: "#F8FBFF", bg2: "#FFFFFF", bg3: "#DBEAFE",
+  border: "#BFDBFE", borderLight: "#93C5FD",
+  text: "#1E3A8A", textLight: "#1D4ED8", textDim: "#64748B", textBright: "#0F172A",
+  accent: "#2563EB", accentDark: "#1D4ED8",
   success: "#22C55E", warning: "#F59E0B", danger: "#EF4444",
+};
+
+const inferFieldsByRegex = (text) => {
+  const rules = [
+    { type: "wallet_address", regex: /0x[a-fA-F0-9]{40}|T[a-zA-HJ-NP-Z1-9]{33}|(?:bc1[a-zA-HJ-NP-Z0-9]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34})/g },
+    { type: "bank_account", regex: /\b\d{10,16}\b/g },
+    { type: "url", regex: /https?:\/\/[^\s]+/g },
+    { type: "id_number", regex: /\b[A-Z][12]\d{8}\b/g },
+    { type: "license_plate", regex: /\b[A-Z]{2,3}[- ]?\d{3,4}\b/g },
+    { type: "location", regex: /(台北|新北|桃園|台中|台南|高雄)[^\s，。]{0,12}/g },
+  ];
+  const results = [];
+  rules.forEach(({ type, regex }) => {
+    const matches = text.match(regex) || [];
+    matches.forEach((value) => results.push({ type, value, confidence: 0.72, context: "regex fallback", attributes: {} }));
+  });
+  return results;
 };
 
 /* ── Main Component ── */
@@ -194,7 +217,9 @@ function CaseList({ cases, setCases, openCase, showNewCase, setShowNewCase }) {
     if (!newCase.case_number || !newCase.title) return;
     const c = {
       ...newCase, id: uid(), status: "draft", created_at: now(),
-      evidence: [], fields: [], auditLog: [{ action: "case_create", user: "王大明", time: now(), detail: "建立案件" }],
+      evidence: [], fields: [],
+      uploadToken: uid(),
+      auditLog: [{ action: "case_create", user: "王大明", time: now(), detail: "建立案件" }],
     };
     setCases(prev => [c, ...prev]);
     setShowNewCase(false);
@@ -256,6 +281,14 @@ function CaseList({ cases, setCases, openCase, showNewCase, setShowNewCase }) {
                 <TypeBadge type={c.case_type} />
               </div>
               <div style={{ fontSize: 14, fontWeight: 600, color: C.textBright }}>{c.title}</div>
+              {c.uploadToken && (
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                  <img alt="qr" src={`https://api.qrserver.com/v1/create-qr-code/?size=72x72&data=${encodeURIComponent(`case://${c.case_number}/${c.uploadToken}`)}`} style={{ width: 56, height: 56, border: `1px solid ${C.border}`, borderRadius: 6 }} />
+                  <div style={{ fontSize: 11, color: C.textDim }}>掃描上傳案件資料
+                    <div style={{ fontFamily: MONO, color: C.textLight }}>case://{c.case_number}/{c.uploadToken}</div>
+                  </div>
+                </div>
+              )}
               <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
                 {c.unit} ・ 報案人：{c.reporter_name || "—"} ・ {c.created_at}
               </div>
@@ -280,6 +313,7 @@ function CaseWorkspace({ caseData, setCaseData, activeTab, setActiveTab }) {
     { key: "confirm", label: "✅ 校對確認", count: caseData.fields?.filter(f => !f.confirmed).length },
     { key: "export", label: "📄 匯出送交" },
     { key: "audit", label: "📝 稽核日誌", count: caseData.auditLog?.length },
+    { key: "interview", label: "🗣️ 筆錄問答" },
   ];
 
   return (
@@ -316,6 +350,7 @@ function CaseWorkspace({ caseData, setCaseData, activeTab, setActiveTab }) {
         {activeTab === "confirm" && <ConfirmTab caseData={caseData} setCaseData={setCaseData} />}
         {activeTab === "export" && <ExportTab caseData={caseData} setCaseData={setCaseData} />}
         {activeTab === "audit" && <AuditTab caseData={caseData} />}
+        {activeTab === "interview" && <InterviewTab caseData={caseData} />}
       </div>
     </div>
   );
@@ -432,6 +467,7 @@ ${ocrResult.ocr_text}
 
 ### 任務目標：
 1. 從文字中識別所有涉及金融、身分、通訊的關鍵欄位。
+1-1. 請特別擷取：人名、帳號、暱稱、ID、連結網址、銀行帳戶、加密貨幣錢包位址、車號、地點。
 2. 針對「加密貨幣地址」，必須確保與原始文字逐字對應。
 3. 輸出格式必須為「純 JSON」，不要包含 Markdown 標記或開場白。
 
@@ -439,7 +475,7 @@ ${ocrResult.ocr_text}
 {
   "fields": [
     {
-      "type": "wallet_address|tx_hash|bank_account|url|phone_number|datetime|amount|line_id|email|other",
+      "type": "person_name|account|nickname|id_number|wallet_address|tx_hash|bank_account|url|phone_number|datetime|amount|line_id|email|license_plate|location|other",
       "value": "擷取的值",
       "confidence": 0.95,
       "context": "脈絡說明",
@@ -483,21 +519,24 @@ ${ocrResult.ocr_text}
         parsed = m ? JSON.parse(m[0]) : { fields: [] };
       }
       console.log("parsed:",parsed);
-      const newFields = (parsed.fields || []).map(f => ({
+      const extractedFields = (parsed.fields || []).length ? (parsed.fields || []) : inferFieldsByRegex(ocrResult.ocr_text);
+      const newFields = extractedFields.map(f => ({
         id: Math.random().toString(36).substr(2, 9),
         evidenceId: ev.id,
         evidenceNumber: ev.number,
-        type: f.type,
+        type: f.type || "other",
         value: f.value,
         confidence: f.confidence || 0.8,
         context: f.context || "",
+        attributes: f.attributes || {},
+        sourcePage: (ocrResult.pages || []).find(pg => (pg.text || "").includes(f.value))?.page || 1,
         method: "surya+llm",
       }));
 
       setCaseData(p => ({
         ...p,
         evidence: p.evidence.map(x => x.id === ev.id ? {
-          ...x, status: "extracted", ocrText: ocrResult.ocr_text, summary: parsed.summary,
+          ...x, status: "extracted", ocrText: ocrResult.ocr_text, ocrPages: ocrResult.pages || [], summary: parsed.summary,
         } : x),
         fields: [...(p.fields || []), ...newFields],
       }));
@@ -617,13 +656,22 @@ function ExtractTab({ caseData, setCaseData }) {
   const grouped = {};
   fields.forEach(f => { (grouped[f.type] = grouped[f.type] || []).push(f); });
 
+  const [manualType, setManualType] = useState("wallet_address");
+  const [manualValue, setManualValue] = useState("");
+  const [selectedType, setSelectedType] = useState("all");
+  const [selectedField, setSelectedField] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [graphImage, setGraphImage] = useState(null);
+  const [ledgerCoin, setLedgerCoin] = useState("USDT");
+  const [ledgerRange, setLedgerRange] = useState("30d");
+
   const addManualField = (type, value) => {
     const chain = type === "wallet_address" ? detectChain(value) : null;
     const v = validateField(type, value, { chain });
     const f = {
       id: uid(), evidenceId: null, evidenceNumber: "手動",
       type, value, confidence: 1.0, context: "手動輸入",
-      attributes: { chain }, validation: v, confirmed: false, method: "manual",
+      attributes: { chain }, validation: v, confirmed: false, method: "manual", sourcePage: 1,
     };
     setCaseData(p => ({
       ...p, fields: [...(p.fields || []), f],
@@ -631,17 +679,63 @@ function ExtractTab({ caseData, setCaseData }) {
     }));
   };
 
-  const [manualType, setManualType] = useState("wallet_address");
-  const [manualValue, setManualValue] = useState("");
+  useEffect(() => {
+    if (!fields.length) return;
+    fetch("http://localhost:8000/network-graph", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ case_number: caseData.case_number, fields: fields.map(f => ({ type: f.type, value: f.value })) })
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setGraphImage(data?.image_base64 ? `data:image/png;base64,${data.image_base64}` : null))
+      .catch(() => setGraphImage(null));
+  }, [fields.length]);
+
+  const categories = Object.entries(grouped);
+  const showing = selectedType === "all" ? fields : (grouped[selectedType] || []);
+  const selectedEvidence = caseData.evidence?.find(e => e.id === selectedField?.evidenceId);
+  const sourcePageText = selectedEvidence?.ocrPages?.find(p => p.page === selectedField?.sourcePage)?.text;
+
+  const walletLedger = selectedField?.type === "wallet_address" ? {
+    chain: detectChain(selectedField.value) || selectedField.attributes?.chain || "Unknown",
+    created_event: "首次鏈上轉入",
+    last_transaction: "2026-03-05 14:20",
+    transfer_in_count: 12,
+    transfer_in_amount: `128.45 ${ledgerCoin}`,
+    transfer_out_count: 9,
+    transfer_out_amount: `95.10 ${ledgerCoin}`,
+  } : null;
+
+  const saveFieldValue = () => {
+    if (!selectedField) return;
+    setCaseData(p => ({ ...p, fields: p.fields.map(f => f.id === selectedField.id ? { ...f, value: editValue } : f) }));
+    setSelectedField(prev => ({ ...prev, value: editValue }));
+  };
+
+  const downloadLedger = () => {
+    if (!walletLedger || !selectedField) return;
+    const content = [
+      `Wallet: ${selectedField.value}`,
+      `Coin: ${ledgerCoin}`,
+      `Time Range: ${ledgerRange}`,
+      ...Object.entries(walletLedger).map(([k,v]) => `${k}: ${v}`),
+    ].join("\n");
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${selectedField.value.slice(0,10)}_${ledgerCoin}_${ledgerRange}_ledger.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div style={{ maxWidth: 900, animation: "fadeIn .3s ease" }}>
+    <div style={{ maxWidth: 980, animation: "fadeIn .3s ease" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: C.textBright }}>🔍 情資擷取結果</h3>
         <span style={{ fontSize: 12, color: C.textDim }}>共 {fields.length} 個欄位</span>
       </div>
 
-      {/* Manual Add */}
       <div style={{ background: C.bg1, borderRadius: 10, padding: 16, border: `1px solid ${C.border}`, marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-end" }}>
         <div>
           <div style={{ fontSize: 11, color: C.textLight, fontWeight: 600, marginBottom: 4 }}>欄位類型</div>
@@ -659,23 +753,58 @@ function ExtractTab({ caseData, setCaseData }) {
           style={{ background: C.accent, border: "none", borderRadius: 6, padding: "8px 16px", color: "#fff", fontWeight: 600, fontSize: 12 }}>+ 加入</button>
       </div>
 
-      {/* Grouped Fields */}
-      {Object.entries(grouped).map(([type, items]) => (
-        <div key={type} style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 14 }}>{FIELD_LABELS[type]?.icon}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: FIELD_LABELS[type]?.color || C.textLight }}>{FIELD_LABELS[type]?.label || type}</span>
-            <span style={{ fontSize: 11, color: C.textDim }}>({items.length})</span>
-          </div>
-          {items.map(f => <FieldCard key={f.id} field={f} />)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(120px,1fr))", gap: 10, marginBottom: 16 }}>
+        <button onClick={() => setSelectedType("all")} style={{ border: `1px solid ${C.border}`, background: selectedType === "all" ? C.bg3 : C.bg1, borderRadius: 8, padding: 10 }}>全部 ({fields.length})</button>
+        {categories.map(([type, items]) => (
+          <button key={type} onClick={() => setSelectedType(type)} style={{ border: `1px solid ${C.border}`, background: selectedType === type ? `${FIELD_LABELS[type]?.color}22` : C.bg1, borderRadius: 8, padding: 10 }}>
+            {FIELD_LABELS[type]?.icon} {FIELD_LABELS[type]?.label || type} ({items.length})
+          </button>
+        ))}
+      </div>
+
+      {graphImage && (
+        <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: C.textLight }}>NetworkX 關係圖</div>
+          <img src={graphImage} alt="network-graph" style={{ width: "100%", maxHeight: 360, objectFit: "contain" }} />
         </div>
-      ))}
+      )}
+
+      {showing.map(f => <div key={f.id} onClick={() => { setSelectedField(f); setEditValue(f.value); }}><FieldCard field={f} /></div>)}
 
       {fields.length === 0 && (
         <div style={{ textAlign: "center", padding: 60, color: C.textDim }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
           <div style={{ fontSize: 14 }}>尚未擷取任何情資</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>請先至「證據管理」上傳並辨識截圖</div>
+        </div>
+      )}
+
+      {selectedField && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 50 }} onClick={() => setSelectedField(null)}>
+          <div style={{ width: "min(900px, 95vw)", maxHeight: "90vh", overflow: "auto", background: C.bg2, borderRadius: 12, padding: 18 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+              <h4 style={{ margin: 0, color: C.textBright }}>情資詳情：{FIELD_LABELS[selectedField.type]?.label || selectedField.type}</h4>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setSelectedField(null)}>關閉</button>
+            </div>
+            <input value={editValue} onChange={e => setEditValue(e.target.value)} style={{ width: "100%", padding: 8, marginBottom: 8 }} />
+            <button onClick={saveFieldValue} style={{ marginBottom: 12 }}>儲存修正</button>
+            <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>來源頁面：第 {selectedField.sourcePage || 1} 頁（證據 {selectedField.evidenceNumber}）</div>
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{sourcePageText || selectedEvidence?.ocrText || "無頁面內容"}</pre>
+            </div>
+
+            {walletLedger && (
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>鏈上帳本基本資料</div>
+                {Object.entries(walletLedger).map(([k, v]) => <div key={k}>{k}: {v}</div>)}
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <select value={ledgerCoin} onChange={e => setLedgerCoin(e.target.value)}><option>USDT</option><option>ETH</option><option>BTC</option></select>
+                  <select value={ledgerRange} onChange={e => setLedgerRange(e.target.value)}><option value="7d">7天</option><option value="30d">30天</option><option value="90d">90天</option></select>
+                  <button onClick={downloadLedger}>下載帳本附件</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -858,6 +987,47 @@ function AuditTab({ caseData }) {
             </div>
           ))
         )}
+      </div>
+    </div>
+  );
+}
+
+
+function InterviewTab({ caseData }) {
+  const confirmed = (caseData.fields || []).filter(f => f.confirmed);
+  const qas = confirmed.slice(0, 20).map((f, i) => ({
+    q: `請說明「${FIELD_LABELS[f.type]?.label || f.type}」${f.confirmedValue || f.value} 的來源與關聯？`,
+    a: `來源證據 ${f.evidenceNumber || "手動"}，建議追問時間、交易對象與資金流向。`
+  }));
+
+  const downloadWord = () => {
+    const content = [
+      `筆錄問答草稿 - ${caseData.case_number}`,
+      ...qas.map((x, i) => `Q${i+1}: ${x.q}\nA${i+1}: ${x.a}\n`)
+    ].join("\n");
+    const blob = new Blob([content], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${caseData.case_number}_筆錄問答.doc`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: C.textBright }}>🗣️ 筆錄問答</h3>
+        <div style={{ flex: 1 }} />
+        <button onClick={downloadWord} style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px" }}>下載 Word</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {qas.map((qa, idx) => (
+          <div key={idx} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }}>
+            <div style={{ fontWeight: 700, color: C.textBright }}>Q{idx + 1}. {qa.q}</div>
+            <div style={{ color: C.textLight, marginTop: 6 }}>A{idx + 1}. {qa.a}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

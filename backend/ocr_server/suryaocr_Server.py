@@ -7,6 +7,11 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pdf2image import convert_from_path
 from PIL import Image
+import io
+import base64
+import matplotlib.pyplot as plt
+import networkx as nx
+from pydantic import BaseModel
 from surya.foundation import FoundationPredictor
 from surya.detection import DetectionPredictor
 from surya.recognition import RecognitionPredictor
@@ -83,6 +88,33 @@ async def do_ocr(file: UploadFile = File(...)):
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+class GraphField(BaseModel):
+    type: str
+    value: str
+
+class GraphRequest(BaseModel):
+    case_number: str
+    fields: list[GraphField]
+
+@app.post("/network-graph")
+async def network_graph(request: GraphRequest):
+    g = nx.Graph()
+    root = request.case_number
+    g.add_node(root, kind="case")
+    for f in request.fields[:120]:
+        label = f"{f.type}:{f.value[:18]}"
+        g.add_node(label, kind=f.type)
+        g.add_edge(root, label)
+    pos = nx.spring_layout(g, seed=42)
+    fig = plt.figure(figsize=(8, 5))
+    nx.draw(g, pos, with_labels=True, node_size=800, font_size=7, node_color="#BFDBFE", edge_color="#60A5FA")
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", dpi=140)
+    plt.close(fig)
+    return {"image_base64": base64.b64encode(buf.getvalue()).decode("utf-8")}
+
 
 if __name__ == "__main__":
     import uvicorn
