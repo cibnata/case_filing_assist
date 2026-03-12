@@ -118,3 +118,22 @@ POPPLER_PATH=/usr/bin
   - LLM: `/llm-api` -> `http://localhost:8001`
 - Frontend will try multiple endpoints in order: env var -> proxy path -> localhost fallback.
 
+
+
+### OCR backend Python dependencies
+
+If you run into `ModuleNotFoundError: No module named 'requests'` (or other Python modules), install OCR backend dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/ocr_server/requirements.txt
+```
+
+Quick verify:
+
+```bash
+python backend/ocr_server/suryaocr_Server.py
+curl http://localhost:8000/docs
+```
+

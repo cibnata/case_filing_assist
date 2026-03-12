@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+pillow
+pdf2image
+matplotlib
+networkx
+requests
+torch
+surya-ocr
