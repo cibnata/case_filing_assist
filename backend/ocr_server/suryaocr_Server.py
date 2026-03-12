@@ -12,6 +12,7 @@ import base64
 import matplotlib.pyplot as plt
 import networkx as nx
 from pydantic import BaseModel
+from shutil import which
 from surya.foundation import FoundationPredictor
 from surya.detection import DetectionPredictor
 from surya.recognition import RecognitionPredictor
@@ -57,7 +58,22 @@ async def do_ocr(file: UploadFile = File(...)):
         # 轉換為圖片列表
         pages = []
         if ext == ".pdf":
-            pages = convert_from_path(temp_path, dpi=300, thread_count=os.cpu_count(),poppler_path=r"C:\Program Files\poppler\Library\bin")
+            poppler_path = os.getenv("POPPLER_PATH")
+            convert_kwargs = {
+                "dpi": 300,
+                "thread_count": os.cpu_count(),
+            }
+
+            # 僅在環境變數指定且路徑存在時帶入 poppler_path
+            if poppler_path and os.path.exists(poppler_path):
+                convert_kwargs["poppler_path"] = poppler_path
+            # Linux/macOS 通常直接依賴 PATH 裡的 pdftoppm
+            elif os.name != "nt" and which("pdftoppm") is None:
+                raise RuntimeError(
+                    "找不到 pdftoppm。請安裝 poppler-utils，或設定 POPPLER_PATH 指向 poppler bin 目錄。"
+                )
+
+            pages = convert_from_path(temp_path, **convert_kwargs)
         else:
             pages = [Image.open(temp_path).convert("RGB")]
 
